@@ -69,8 +69,6 @@ async function imageToTextWithZAI(
   try {
     const requestBody = {
       model: "glm-ocr",
-      need_layout_visualization: true,
-      return_crop_images: true,
       file: `data:${mimeType};base64,${imageBase64}`,
     };
 
@@ -261,7 +259,7 @@ async function imageToText(
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({
-        model: "gemini-2.0-flash",
+        model: "gemini-3-flash-preview",
       });
 
       const result = await model.generateContent([prompt, fileDataPart]);

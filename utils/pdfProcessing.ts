@@ -144,8 +144,6 @@ async function pdfToTextWithZAI(
   try {
     const requestBody: Record<string, unknown> = {
       model: "glm-ocr",
-      need_layout_visualization: true,
-      return_crop_images: true,
       file: `data:application/pdf;base64,${pdfBase64}`,
     };
 
@@ -178,6 +176,7 @@ async function pdfToTextWithZAI(
 
     const data = await response.json();
     if (report) {
+      console.log("Z.AI Report Parsing Response:", data.md_results);
       return data.md_results;
     }
     console.log("Z.AI Layout Parsing Response:", data);

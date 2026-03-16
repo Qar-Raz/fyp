@@ -23,6 +23,16 @@ import {
     SheetTitle,
 } from "@/components/ui/sheet"
 import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
     FileText,
     X,
     Loader2,
@@ -37,6 +47,7 @@ import {
     ClipboardList,
     MessageSquare,
     ExternalLink,
+    Trash2,
 } from "lucide-react"
 import {
     DndContext,
@@ -55,7 +66,7 @@ import {
     verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { uploadUserDocument, getMedicalReportDetails, getDocumentDetails, getUserDocuments, PatientDataType, UploadUserDocumentResult } from "../../data/actions"
+import { uploadUserDocument, getMedicalReportDetails, getDocumentDetails, getUserDocuments, deleteDocument, PatientDataType, UploadUserDocumentResult } from "../../data/actions"
 
 interface UserDocument {
     id: string
@@ -81,6 +92,9 @@ interface MedicalReportDetails {
     reportURL: string | null
     createdAt: string
     markdown: string | null
+    passed: boolean | null
+    fidelityScore: number | null
+    conclusion: string | null
     values: Array<{
         id: string
         key: string
@@ -191,6 +205,9 @@ export default function UserDataClient({ userId, userName, initialDocuments, ini
     const [medicalReportDetails, setMedicalReportDetails] = useState<MedicalReportDetails | null>(null)
     const [isLoadingDetails, setIsLoadingDetails] = useState(false)
     const [reportViewMode, setReportViewMode] = useState<"keyvalue" | "markdown">("keyvalue")
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+    const [documentToDelete, setDocumentToDelete] = useState<UserDocument | null>(null)
+    const [isDeleting, setIsDeleting] = useState(false)
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -240,6 +257,37 @@ export default function UserDataClient({ userId, userName, initialDocuments, ini
             console.error("Error fetching document details:", error)
         } finally {
             setIsLoadingDetails(false)
+        }
+    }
+
+    const handleDeleteClick = (e: React.MouseEvent, doc: UserDocument) => {
+        e.stopPropagation() // Prevent triggering the document details sheet
+        setDocumentToDelete(doc)
+        setDeleteDialogOpen(true)
+    }
+
+    const handleDeleteConfirm = async () => {
+        if (!documentToDelete) return
+
+        setIsDeleting(true)
+        try {
+            const result = await deleteDocument(documentToDelete.id)
+            if (result.success) {
+                // Refresh the documents list
+                await fetchUserDocuments(currentPage)
+                // Close the sheet if the deleted document was selected
+                if (selectedDocument?.id === documentToDelete.id) {
+                    setSelectedDocument(null)
+                    setDocumentDetails(null)
+                    setMedicalReportDetails(null)
+                }
+            }
+        } catch (error) {
+            console.error("Error deleting document:", error)
+        } finally {
+            setIsDeleting(false)
+            setDeleteDialogOpen(false)
+            setDocumentToDelete(null)
         }
     }
 
@@ -721,6 +769,14 @@ export default function UserDataClient({ userId, userName, initialDocuments, ini
                                             )}
                                         </div>
                                     </div>
+                                    <button
+                                        type="button"
+                                        onClick={(e) => handleDeleteClick(e, doc)}
+                                        className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-500/20 transition-colors"
+                                        title="Delete document"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
                                 </div>
                             ))}
 
@@ -815,6 +871,58 @@ export default function UserDataClient({ userId, userName, initialDocuments, ini
                                             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Test Values</p>
                                             <p className="font-medium mt-1.5 text-sm">{medicalReportDetails.values.length} extracted</p>
                                         </div>
+                                        <div className="p-4 rounded-lg border bg-muted/30">
+                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Fidelity Score</p>
+                                            <div className="flex items-center gap-2 mt-1.5">
+                                                {medicalReportDetails.fidelityScore !== null ? (
+                                                    <>
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <span className={`text-sm font-medium ${medicalReportDetails.fidelityScore >= 0.8 ? "text-green-600 dark:text-green-400" :
+                                                                    medicalReportDetails.fidelityScore >= 0.6 ? "text-yellow-600 dark:text-yellow-400" :
+                                                                        medicalReportDetails.fidelityScore >= 0.4 ? "text-orange-600 dark:text-orange-400" :
+                                                                            "text-red-600 dark:text-red-400"
+                                                                    }`}>
+                                                                    {(medicalReportDetails.fidelityScore * 100).toFixed(0)}%
+                                                                </span>
+                                                                {medicalReportDetails.passed !== null && (
+                                                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${medicalReportDetails.passed
+                                                                        ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300"
+                                                                        : "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
+                                                                        }`}>
+                                                                        {medicalReportDetails.passed ? "Passed" : "Failed"}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                                                                <div
+                                                                    className={`h-full rounded-full transition-all ${medicalReportDetails.fidelityScore >= 0.8 ? "bg-green-500" :
+                                                                        medicalReportDetails.fidelityScore >= 0.6 ? "bg-yellow-500" :
+                                                                            medicalReportDetails.fidelityScore >= 0.4 ? "bg-orange-500" :
+                                                                                "bg-red-500"
+                                                                        }`}
+                                                                    style={{ width: `${medicalReportDetails.fidelityScore * 100}%` }}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <span className="text-sm text-muted-foreground">Not calculated</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="p-4 rounded-lg border bg-muted/30">
+                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Validation</p>
+                                            <p className="font-medium mt-1.5 text-sm">
+                                                {medicalReportDetails.passed === true ? (
+                                                    <span className="text-green-600 dark:text-green-400">All values verified</span>
+                                                ) : medicalReportDetails.passed === false ? (
+                                                    <span className="text-red-600 dark:text-red-400">Issues detected</span>
+                                                ) : (
+                                                    <span className="text-muted-foreground">Not validated</span>
+                                                )}
+                                            </p>
+                                        </div>
                                     </div>
 
                                     {/* Report File Link */}
@@ -859,6 +967,45 @@ export default function UserDataClient({ userId, userName, initialDocuments, ini
                                             >
                                                 Raw Text
                                             </button>
+                                        </div>
+                                    )}
+
+                                    {/* AI Conclusion */}
+                                    {medicalReportDetails.conclusion && (
+                                        <div className={`rounded-lg border p-4 ${medicalReportDetails.passed === true
+                                            ? "bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/30"
+                                            : "bg-orange-50 dark:bg-orange-500/10 border-orange-200 dark:border-orange-500/30"
+                                            }`}>
+                                            <div className="flex items-start gap-3">
+                                                <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${medicalReportDetails.passed === true
+                                                    ? "bg-green-100 dark:bg-green-500/20"
+                                                    : "bg-orange-100 dark:bg-orange-500/20"
+                                                    }`}>
+                                                    {medicalReportDetails.passed === true ? (
+                                                        <svg className="h-4 w-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                        </svg>
+                                                    ) : (
+                                                        <svg className="h-4 w-4 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                                        </svg>
+                                                    )}
+                                                </div>
+                                                <div className="flex-1">
+                                                    <p className={`text-sm font-medium mb-1 ${medicalReportDetails.passed === true
+                                                        ? "text-green-700 dark:text-green-300"
+                                                        : "text-orange-700 dark:text-orange-300"
+                                                        }`}>
+                                                        {medicalReportDetails.passed === true ? "Validation Passed" : "Validation Issues Detected"}
+                                                    </p>
+                                                    <p className={`text-sm ${medicalReportDetails.passed === true
+                                                        ? "text-green-600/80 dark:text-green-400/80"
+                                                        : "text-orange-600/80 dark:text-orange-400/80"
+                                                        }`}>
+                                                        {medicalReportDetails.conclusion}
+                                                    </p>
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
 
@@ -988,6 +1135,40 @@ export default function UserDataClient({ userId, userName, initialDocuments, ini
                         </Button>
                     </Link>
                 </div>
+
+                {/* Delete Confirmation Dialog */}
+                <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Document</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                Are you sure you want to delete &ldquo;{documentToDelete?.title}&rdquo;? This action cannot be undone.
+                                {documentToDelete?.patientDataType === 'REPORT' && (
+                                    <span className="block mt-2 text-orange-600 dark:text-orange-400">
+                                        This will also delete all associated medical report data and test values.
+                                    </span>
+                                )}
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                                onClick={handleDeleteConfirm}
+                                disabled={isDeleting}
+                                className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+                            >
+                                {isDeleting ? (
+                                    <span className="flex items-center gap-2">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        Deleting...
+                                    </span>
+                                ) : (
+                                    "Delete"
+                                )}
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
             </div>
         </>
     )

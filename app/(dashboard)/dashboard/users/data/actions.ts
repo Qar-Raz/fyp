@@ -280,7 +280,15 @@ export async function uploadUserDocument(
           return { success: true, testValues: 0 };
         } else {
           // REPORT type: AI extraction for each file separately
-          const extractedData = await extractReportDataWithAI(extractedText);
+          // Determine file type based on MIME type
+          const fileType: "pdf" | "image" = file.type.includes("pdf")
+            ? "pdf"
+            : "image";
+          const extractedData = await extractReportDataWithAI(
+            extractedText,
+            file.base64,
+            fileType
+          );
 
           // Parse the report date if provided
           let reportDate: Date | null = null;
@@ -336,6 +344,9 @@ export async function uploadUserDocument(
               markdown: extractedText,
               reportDate: reportDate,
               reportURL: uploadResult.secure_url,
+              passed: extractedData.passed,
+              fidelityScore: extractedData.fidelityScore,
+              conclusion: extractedData.conclusion,
               reportValues: {
                 create: extractedData.testValues.map((tv) => ({
                   key: tv.key,
@@ -584,6 +595,9 @@ export async function getMedicalReportDetails(documentId: string) {
       reportURL: medicalReport.reportURL,
       createdAt: medicalReport.createdAt.toISOString(),
       markdown: medicalReport.markdown,
+      passed: medicalReport.passed,
+      fidelityScore: medicalReport.fidelityScore,
+      conclusion: medicalReport.conclusion,
       values: medicalReport.reportValues.map((v) => ({
         id: v.id,
         key: v.key,
@@ -659,5 +673,68 @@ export async function getDocumentDetails(
   } catch (error) {
     console.error("Error fetching document details:", error);
     return null;
+  }
+}
+
+/**
+ * Delete a document and all its associated data
+ */
+export async function deleteDocument(documentId: string) {
+  try {
+    // First, get the document to verify it exists
+    const document = await prisma.document.findUnique({
+      where: { id: documentId },
+    });
+
+    if (!document) {
+      return {
+        success: false,
+        message: "Document not found.",
+      };
+    }
+
+    // Delete all associated data in the correct order due to foreign key constraints
+
+    // 1. Delete medical report values (if any)
+    await prisma.medicalReportValue.deleteMany({
+      where: {
+        report: {
+          documentId,
+        },
+      },
+    });
+
+    // 2. Delete medical reports (if any)
+    await prisma.medicalReport.deleteMany({
+      where: { documentId },
+    });
+
+    // 3. Delete RAG chunks
+    await prisma.ragChunk.deleteMany({
+      where: { documentId },
+    });
+
+    // 4. Delete parent chunks
+    await prisma.parentChunk.deleteMany({
+      where: { documentId },
+    });
+
+    // 5. Finally, delete the document itself
+    await prisma.document.delete({
+      where: { id: documentId },
+    });
+
+    revalidatePath("/dashboard/users/data");
+
+    return {
+      success: true,
+      message: "Document deleted successfully.",
+    };
+  } catch (error) {
+    console.error("Error deleting document:", error);
+    return {
+      success: false,
+      message: "Failed to delete document.",
+    };
   }
 }

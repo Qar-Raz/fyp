@@ -4,9 +4,17 @@ import { redirect } from "next/navigation";
 
 export default async function connect() {
     const user = await currentUser();
-
-    if (!user || !user.username) {
+    console.log(user)
+    if (!user) {
         return redirect("/sign-in");
+
+    }
+    let userName;
+    if (!user.username) {
+        userName = `${user.firstName} ${user.lastName}`
+    }
+    else {
+        userName = user.username
     }
 
     const match = await prisma.user.upsert({
@@ -15,12 +23,12 @@ export default async function connect() {
         },
         update: {
             email: user.emailAddresses[0].emailAddress,
-            name: user.username,
+            name: userName,
         },
         create: {
             clerkId: user.id,
             email: user.emailAddresses[0].emailAddress,
-            name: user.username,
+            name: userName,
         },
     });
 
