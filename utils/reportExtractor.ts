@@ -355,22 +355,42 @@ export async function extractReportDataWithAI(
     const imageBase64 = await prepareImageInput(fileBase64, fileType);
 
     console.log("\n--- STEP 2: Extracting all data directly from image ---");
-
-    const TEST_VALUES_EXTRACTION_PROMPT = `You are an elite medical data extraction AI. You are provided with an image of a medical laboratory report.
-Your task is to accurately extract all test results into the required JSON format.
+    const TEST_VALUES_EXTRACTION_PROMPT = `You are an elite medical data extraction AI. You are provided with an image of a medical laboratory report. 
+Your primary directive is EXHAUSTIVE EXTRACTION. You must accurately extract every single test result into the required JSON format. Missing even one test result is a critical failure.
 
 ### EXTRACTION INSTRUCTIONS:
 
-testValues (The Lab Results):
-- Extract EVERY test result listed in the document.
-- "key": The exact specific name of the test (e.g., "HEMOGLOBIN", "CHOLESTEROL", "TSH"). Do not include category headers (like "Biochemistry" or "CBC").
-- "value": The patient's exact result as a string (e.g., "5.4", "10.6 L", "<0.01", "Positive", "Negative"). It can be numeric, text, or a combination. Capture decimal points, operators (<, >), and any attached letters (like 'H' or 'L') accurately.
-- "unit": The unit of measurement (e.g., "mg/dL", "mmol/L", "%"). If no unit is present, return null.
+Process the document systematically, line-by-line, top-to-bottom, left-to-right. For every diagnostic test found, extract the following into the "testValues" array:
+
+1. "key": The specific name of the test (e.g., "HEMOGLOBIN", "CHOLESTEROL", "TSH", "Neutrophils"). 
+   - Capture the exact name.
+   - Do NOT include overarching category headers (like "Biochemistry" or "Complete Blood Count").
+
+2. "value": The patient's exact recorded result as a string.
+   - Capture the exact characters (e.g., "5.4", "10.6 L", "<0.01", "Positive", "Negative", "Trace").
+   - Include any decimal points, mathematical operators (<, >), and attached flags (like 'H', 'L', '*', or 'High').
+
+3. "unit": The unit of measurement (e.g., "mg/dL", "mmol/L", "%", "10^9/L"). 
+   - If no unit is visually present next to the result, return null.
 
 ### STRICT RULES & COMMON MISTAKES TO AVOID:
-- RULE 1: NEVER extract the "Reference Range", "Normal Range", or "Biological Interval" as the test value. Only extract the patient's actual result.
-- RULE 2: ZERO HALLUCINATION. Do not guess, infer, or make up data. If it is not visible, use null.
-- RULE 3: Ignore patient names, doctor names, age, gender, addresses, and page numbers. Focus ONLY on diagnostic results.`;
+- RULE 1: ZERO OMISSIONS / NO LAZINESS. You must extract EVERY test on the page. Do not summarize, do not truncate, and NEVER use ellipses ("...") to skip data. If there are 50 tests, you must output 50 JSON objects.
+- RULE 2: AVOID REFERENCE RANGES. Never extract the "Reference Range", "Normal Range", or "Biological Interval" as the test value. Visually distinguish the "Result" column from the "Reference" column.
+- RULE 3: ZERO HALLUCINATION. Do not guess, infer, calculate, or make up data. Extract only what is visibly printed. If a value is unreadable, skip it.
+- RULE 4: IGNORE NON-TEST DATA. Ignore patient names, doctor names, demographics, clinic addresses, barcodes, and page numbers. Focus strictly on the diagnostic test line items.
+
+### REQUIRED JSON OUTPUT FORMAT:
+You must return ONLY valid, well-formed JSON matching the following structure. Do not wrap the JSON in markdown code blocks or add any conversational text.
+
+{
+  "testValues": [
+    {
+      "key": "string",
+      "value": "string",
+      "unit": "string | null"
+    }
+  ]
+}`;
 
     const METADATA_EXTRACTION_PROMPT = `You are an elite medical data extraction AI. You are provided with an image of a medical laboratory report.
 Your task is to accurately extract the hospital name and report date into the required JSON format.
