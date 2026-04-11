@@ -162,7 +162,6 @@ async function prepareImageInput(
  */
 async function calculateFidelityScore(
   imageBase64: string,
-  ocrText: string,
   testValues: ExtractedReportValue[],
   hospitalName: string | null,
   reportDate: string | null
@@ -175,9 +174,6 @@ async function calculateFidelityScore(
     .join("\n");
 
   const userContent = `
-OCR TEXT:
-${ocrText.substring(0, 5000)}${ocrText.length > 5000 ? "..." : ""}
-
 EXTRACTED KEY-VALUE PAIRS:
 ${testValuesSummary || "No values extracted"}
 
@@ -507,7 +503,6 @@ Your task is to accurately extract the hospital name and report date into the re
     console.log("\n--- STEP 3: Calculating fidelity score with Gemini ---");
     const fidelityResult = await calculateFidelityScore(
       imageBase64,
-      ocrText,
       testValues,
       finalHospitalName,
       extractedMetadata.reportDate
