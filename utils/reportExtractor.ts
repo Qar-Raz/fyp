@@ -308,6 +308,34 @@ Do not include any other text or formatting. Just the JSON object.`;
 // ============================================================================
 
 /**
+ * Execute a promise-returning function with retries
+ */
+async function fetchWithRetry<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 5
+): Promise<T> {
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    try {
+      return await operation();
+    } catch (error) {
+      attempt++;
+      if (attempt >= maxRetries) {
+        throw error;
+      }
+      const timeoutSec = Math.floor(Math.random() * 3) + 1; // 1 to 3 seconds
+      console.log(
+        `API call failed. Retrying in ${timeoutSec}s... (Attempt ${
+          attempt + 1
+        }/${maxRetries})`
+      );
+      await new Promise((resolve) => setTimeout(resolve, timeoutSec * 1000));
+    }
+  }
+  throw new Error("Maximum retries reached");
+}
+
+/**
  * Extract all structured data from medical report using Qwen Vision
  *
  * @param ocrText - OCR text extracted from the document
@@ -359,81 +387,85 @@ Your task is to accurately extract the hospital name and report date into the re
 - You MUST normalize and convert the extracted date to strictly "YYYY-MM-DD" format (e.g., "12/31/2023" -> "2023-12-31", "05-Aug-2024" -> "2024-08-05").
 - If missing or unreadable, return null.`;
 
-    const testValuesResponse = await openRouter.chat.completions.create({
-      model: "cyankiwi/Qwen3.5-4B-AWQ-4bit",
-      temperature: 0,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "image_url", image_url: { url: imageBase64 } },
-            { type: "text", text: TEST_VALUES_EXTRACTION_PROMPT },
-          ],
-        },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "medical_test_values",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              testValues: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    key: { type: "string" },
-                    value: { type: "string" },
-                    unit: { type: ["string", "null"] },
+    const testValuesResponse = await fetchWithRetry(() =>
+      openRouter.chat.completions.create({
+        model: "cyankiwi/Qwen3.5-4B-AWQ-4bit",
+        temperature: 0,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "image_url", image_url: { url: imageBase64 } },
+              { type: "text", text: TEST_VALUES_EXTRACTION_PROMPT },
+            ],
+          },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "medical_test_values",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                testValues: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      key: { type: "string" },
+                      value: { type: "string" },
+                      unit: { type: ["string", "null"] },
+                    },
+                    required: ["key", "value", "unit"],
+                    additionalProperties: false,
                   },
-                  required: ["key", "value", "unit"],
-                  additionalProperties: false,
                 },
               },
+              required: ["testValues"],
+              additionalProperties: false,
             },
-            required: ["testValues"],
-            additionalProperties: false,
           },
         },
-      },
-    });
+      })
+    );
 
     const testValuesContent = testValuesResponse.choices[0]?.message?.content;
     if (!testValuesContent)
       throw new Error("No content in test values extraction fallback");
     const extractedTestValuesData = JSON.parse(testValuesContent);
 
-    const metadataResponse = await openRouter.chat.completions.create({
-      model: "cyankiwi/Qwen3.5-4B-AWQ-4bit",
-      temperature: 0,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "image_url", image_url: { url: imageBase64 } },
-            { type: "text", text: METADATA_EXTRACTION_PROMPT },
-          ],
-        },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "medical_report_metadata",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              hospitalName: { type: ["string", "null"] },
-              reportDate: { type: ["string", "null"] },
+    const metadataResponse = await fetchWithRetry(() =>
+      openRouter.chat.completions.create({
+        model: "cyankiwi/Qwen3.5-4B-AWQ-4bit",
+        temperature: 0,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "image_url", image_url: { url: imageBase64 } },
+              { type: "text", text: METADATA_EXTRACTION_PROMPT },
+            ],
+          },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "medical_report_metadata",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                hospitalName: { type: ["string", "null"] },
+                reportDate: { type: ["string", "null"] },
+              },
+              required: ["hospitalName", "reportDate"],
+              additionalProperties: false,
             },
-            required: ["hospitalName", "reportDate"],
-            additionalProperties: false,
           },
         },
-      },
-    });
+      })
+    );
 
     const metadataContent = metadataResponse.choices[0]?.message?.content;
     if (!metadataContent)
