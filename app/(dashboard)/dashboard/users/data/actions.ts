@@ -600,8 +600,52 @@ export async function getUserById(userId: string) {
 }
 
 /**
- * Get all users with document count (PATIENT role only)
+ * Get documents for a specific user with pagination.
  */
+export async function getUserDocuments(
+  userId: string,
+  page: number = 1,
+  limit: number = 6
+) {
+  try {
+    const documentsPromise = prisma.document.findMany({
+      where: {
+        userId,
+        type: "PATIENT",
+      },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+
+    const totalPromise = prisma.document.count({
+      where: {
+        userId,
+        type: "PATIENT",
+      },
+    });
+
+    const [documents, total] = await Promise.all([
+      documentsPromise,
+      totalPromise,
+    ]);
+
+    return {
+      documents,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    };
+  } catch (error) {
+    console.error("Error fetching user documents:", error);
+    return {
+      documents: [],
+      total: 0,
+      page,
+      totalPages: 0,
+    };
+  }
+}
 export async function getAllUsersWithDocumentCount() {
   try {
     const users = await prisma.user.findMany({
@@ -638,50 +682,6 @@ export async function getAllUsersWithDocumentCount() {
   } catch (error) {
     console.error("Error fetching users with document count:", error);
     return [];
-  }
-}
-
-/**
- * Get documents for a specific user with pagination.
- */
-export async function getUserDocuments(
-  userId: string,
-  page: number = 1,
-  limit: number = 6
-) {
-  try {
-    const [documents, total] = await Promise.all([
-      prisma.document.findMany({
-        where: {
-          userId,
-          type: "PATIENT",
-        },
-        orderBy: { createdAt: "desc" },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      prisma.document.count({
-        where: {
-          userId,
-          type: "PATIENT",
-        },
-      }),
-    ]);
-
-    return {
-      documents,
-      total,
-      page,
-      totalPages: Math.ceil(total / limit),
-    };
-  } catch (error) {
-    console.error("Error fetching user documents:", error);
-    return {
-      documents: [],
-      total: 0,
-      page,
-      totalPages: 0,
-    };
   }
 }
 
