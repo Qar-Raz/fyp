@@ -9,8 +9,8 @@ import { v4 as uuidv4 } from "uuid";
 
 const openRouter = new OpenAI({
   baseURL:
-    "https://muddasirjaved9--example-qwen3-5-4b-awq-inference-vllmser-8bd3d3.modal.run/v1",
-  apiKey: process.env.OPENROUTER_API_KEY || "",
+    "https://muddasirjaved666--example-qwen3-5-4b-awq-inference-vllms-c9ebea.modal.run/v1",
+  apiKey: process.env.OPENROUTER_API_KEY || "dummy-key",
 });
 
 function getGeminiApiKeys(): string[] {
